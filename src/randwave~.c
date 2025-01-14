@@ -149,7 +149,7 @@ void randwave_generate(t_randwave* x, t_floatarg wavetable_size, t_floatarg num_
 
     for (int i = 1; i < x->num_points - 1; i++) {
         x->points[i].sample = all_samples[i - 1];
-        x->points[i].amplitude = (rand() / (float) RAND_MAX) * 2 - 1; // val between -1 and 1
+        x->points[i].amplitude = ((float) rand() / (float) RAND_MAX) * 2 - 1; // val between -1 and 1
     }
 
     // debug
@@ -167,11 +167,13 @@ void randwave_generate(t_randwave* x, t_floatarg wavetable_size, t_floatarg num_
 }
 
 void randwave_dsp(t_randwave* x, t_signal** sp) {
-    // Always ensure that the waveform is generated first before DSP.
-    if (!x->generated)
-        randwave_generate(x, DEFAULT_WAVETABLE_SIZE, DEFAULT_NUM_INTERP_POINTS);
+    if (sp[0]->s_sr > 0) {
+        // Always ensure that the waveform is generated first before DSP.
+        if (!x->generated)
+            randwave_generate(x, DEFAULT_WAVETABLE_SIZE, DEFAULT_NUM_INTERP_POINTS);
 
-    dsp_add(randwave_perform, 3, x, sp[0]->s_vec, sp[0]->s_n);
+        dsp_add(randwave_perform, 3, x, sp[0]->s_vec, sp[0]->s_n);
+    }
 }
 
 t_int* randwave_perform(t_int* w) {
@@ -214,7 +216,7 @@ void swap(int* a, int* b) {
     *b = temp;
 }
 
-// Fills an int array of size n such that for all i in [0, n), arr[i] = i+1.
+// Fills an int array of size n such that for all i < n, arr[i] = i+1.
 int* fill(int* arr, int n) {
     for (int i = 0; i < n; i++)
         arr[i] = i+1;
@@ -262,6 +264,11 @@ void trig_interp(float* wavetable, int wavetable_size, sample_amplitude_pair* po
             sum += (points[k].amplitude * trig_cardinal(xi - xk, num_points));
         }
 
+        if (sum > 1)
+            sum = 1;
+        else if (sum < -1)
+            sum = -1;
+        
         wavetable[i] = sum;
     }
 }
