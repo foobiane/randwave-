@@ -39,11 +39,11 @@ typedef struct _randwave {
     // Wavetable
     float* wavetable;
     int wavetable_size;
+    int phase; // index of wavetable saved between dsp ops
 
     // Other params
-    float frequency;
-    int sample_increment;
     short generated;
+    t_float fsig; // converts signals to float values
 } t_randwave;
 
 // Pd method prototypes
@@ -81,6 +81,10 @@ void randwave_tilde_setup(void) {
         0                           
     );
 
+    // First inlet will control the frequency of the waveform, enabling
+    // frequency modulation
+    CLASS_MAINSIGNALIN(randwave_class, t_randwave, fsig);
+
     // Defining class methods
     class_addmethod(randwave_class, (t_method) randwave_dsp, gensym("dsp"), A_CANT, 0);	
     class_addmethod(randwave_class, (t_method) randwave_generate, gensym("generate"), A_FLOAT, A_FLOAT, 0);
@@ -89,14 +93,15 @@ void randwave_tilde_setup(void) {
 void* randwave_new(t_symbol* s, short argc, t_atom* argv) {
     t_randwave* x = (t_randwave*) pd_new(randwave_class);
     outlet_new(&x->obj, gensym("signal"));
+    inlet_new(&x->obj, &x->obj.ob_pd, gensym("generate"), gensym("generate")); // inlet for generate messages only
     
     x->points = NULL;
     x->num_points = 0;
 
     x->wavetable = NULL;
     x->wavetable_size = 2048;
+    x->phase = 0;
 
-    x->frequency = 440;
     x->generated = 0;
 
     return x;
@@ -167,37 +172,48 @@ void randwave_generate(t_randwave* x, t_floatarg wavetable_size, t_floatarg num_
 }
 
 void randwave_dsp(t_randwave* x, t_signal** sp) {
-    if (sp[0]->s_sr > 0) {
+    if (sp[1]->s_sr > 0) {
         // Always ensure that the waveform is generated first before DSP.
         if (!x->generated)
             randwave_generate(x, DEFAULT_WAVETABLE_SIZE, DEFAULT_NUM_INTERP_POINTS);
 
-        dsp_add(randwave_perform, 3, x, sp[0]->s_vec, sp[0]->s_n);
+        dsp_add(randwave_perform, 4, x, sp[0]->s_vec /* Left inlet */, sp[1]->s_vec /* Outlet */, sp[1]->s_n /* Signal vector size */);
     }
 }
 
 t_int* randwave_perform(t_int* w) {
     // Obtaining values from signal vector
     t_randwave* x = (t_randwave*) w[1];
-    float* output = (t_float*) w[2];
-    int n = w[3];
+    float* frequency = (t_float*) w[2];
+    float* output = (t_float*) w[3];
+    int n = w[4];
 
-    int i = 0; // wavetable index
-    int sample_increment = ceil((float) x->wavetable_size / (float) n);
+    int i = x->phase; // wavetable index
+    int base_sample_increment = ceil((float) x->wavetable_size / (float) n);
+    int sample_increment = 0;
 
     while (n--) {
         // Reading from wavetable
         *output++ = x->wavetable[i];
 
-        // Moving to next sample in the wavetable. If the increment exceeds the 
-        // number of remaining samples, go to the last sample in the wavetable.
-        if (sample_increment > x->wavetable_size - i)
-            i = x->wavetable_size - 1;
-        else
-            i += sample_increment;
+        // Creating our sample increment by reading from the frequency inlet
+        // (if it is being used)
+        // TODO: Reading from the frequency inlet gives us very odd values.
+        // More testing is needed.
+        sample_increment = /*(frequency ? *frequency++)*/ 1 * base_sample_increment;
+        i += sample_increment;
+
+        // Adjusting for out-of-bounds values
+        while (i >= x->wavetable_size)
+            i -= x->wavetable_size;
+        while (i < 0)
+            i += x->wavetable_size;
     }
 
-    return w + 4;
+    // Saving the index we landed on back into the object
+    x->phase = i;
+
+    return w + 5;
 }
 
 void randwave_free(t_randwave* x) {
@@ -264,6 +280,7 @@ void trig_interp(float* wavetable, int wavetable_size, sample_amplitude_pair* po
             sum += (points[k].amplitude * trig_cardinal(xi - xk, num_points));
         }
 
+        // Hard limiting any amplitudes that exceed 1 or -1
         if (sum > 1)
             sum = 1;
         else if (sum < -1)

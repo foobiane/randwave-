@@ -17,5 +17,5 @@ The creation of randwave~ was heavily inspired by Iannis Xenakis' [Dynamic Stoch
 
 ## Credits & Libraries Used
 * [PureData](https://puredata.info/): Everything!
-* [pd-lib-builder](https://github.com/pure-data/pd-lib-builder): Makefile generation
-* [puredata/externals-howto](https://github.com/pure-data/externals-howto?tab=readme-ov-file#atom-string): Helpful guide used during the creation of this external
+* [pure-data/pd-lib-builder](https://github.com/pure-data/pd-lib-builder): Makefile generation
+* [pure-data/externals-howto](https://github.com/pure-data/externals-howto?tab=readme-ov-file#atom-string): Helpful guide used during the creation of this external
